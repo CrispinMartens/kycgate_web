@@ -14,14 +14,19 @@ import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { StepNodeData } from "@/components/workflow-builder/node-types";
+import {
+  DEFAULT_CONTACT_INFORMATION_FIELDS,
+  type StepNodeData,
+} from "@/components/workflow-builder/node-types";
 import { cn } from "@/lib/utils";
 import { DatePickerField } from "@/components/shared/date-picker-field";
 import { useFetch } from "@/hooks/use-fetch";
 import type { ThemeConfig } from "@/types";
 
 const INTRO_IMAGE = "/kyc-intro-hero.svg";
+const INABANK_INTRO_IMAGE = "/kyc_intro.png";
 const INTRO_MARK = "/kyc-intro-mark.svg";
+const INABANK_LOGO = "/inabank_logo.svg";
 
 type WorkflowDraft = {
   name: string;
@@ -101,7 +106,13 @@ const NATIONALITY_OPTIONS = [
   "Nigeria",
 ];
 
-function NationalityField({ className }: { className?: string }) {
+function NationalityField({
+  className,
+  isGoldenTheme = false,
+}: {
+  className?: string;
+  isGoldenTheme?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState("");
   const [query, setQuery] = useState("");
@@ -119,8 +130,15 @@ function NationalityField({ className }: { className?: string }) {
         <button
           type="button"
           className={cn(
-            "preview-kyc-dropdown-trigger flex h-12 w-full items-center justify-between rounded-md border bg-white px-3 text-left text-sm",
-            value ? "text-[#004555]" : "text-[#86a1a9]",
+            "preview-kyc-dropdown-trigger flex h-12 w-full items-center justify-between rounded-md border px-3 text-left text-sm",
+            isGoldenTheme
+              ? "border-[#4a4a4a] bg-[#101010] text-[#f5f5f5] placeholder:text-[#a0a0a0]"
+              : "bg-white",
+            value
+              ? isGoldenTheme
+                ? "text-[#f5f5f5]"
+                : "text-[#004555]"
+              : "text-[#86a1a9]",
             className,
           )}
         >
@@ -204,6 +222,9 @@ function buildStepsFromDraft(workflow: WorkflowDraft) {
       required: data.required,
       timeoutHours: data.timeoutHours,
       description: data.description,
+      introductionImageUrl: data.introductionImageUrl,
+      contactInformationFields:
+        data.contactInformationFields ?? DEFAULT_CONTACT_INFORMATION_FIELDS,
     };
   });
 }
@@ -241,43 +262,67 @@ function StepContent({
   onContinue,
   variant = "light",
   theme = DEFAULT_PREVIEW_THEME,
+  isGoldenTheme = false,
+  defaultIntroImage = INTRO_IMAGE,
+  defaultIntroLogo = INTRO_MARK,
 }: {
   step: ReturnType<typeof buildStepsFromDraft>[number];
   onContinue: () => void;
   variant?: "light" | "intro";
   theme?: PreviewTheme;
+  isGoldenTheme?: boolean;
+  defaultIntroImage?: string;
+  defaultIntroLogo?: string;
 }) {
   const isIntroTheme = variant === "intro";
-  const labelClass = isIntroTheme ? "text-[#004555]" : "";
+  const emphasisTextColor = isGoldenTheme ? theme.colors.text : theme.colors.primary;
+  const goldenLetterSpacing = isGoldenTheme ? "-0.04em" : undefined;
+  const labelClass = isIntroTheme
+    ? isGoldenTheme
+      ? "text-[#f5f5f5]"
+      : "text-[#004555]"
+    : "";
   const inputClass = isIntroTheme
-    ? "h-12 bg-white border-[#d5e0e5] text-[#004555] placeholder:text-[#86a1a9] focus-visible:ring-[#004555]/30"
+    ? isGoldenTheme
+      ? "h-12 bg-[#101010] border-[#4a4a4a] text-[#f5f5f5] placeholder:text-[#a0a0a0] focus-visible:ring-[#fbc34a]/30"
+      : "h-12 bg-white border-[#d5e0e5] text-[#004555] placeholder:text-[#86a1a9] focus-visible:ring-[#004555]/30"
     : "h-12";
   const textareaClass = isIntroTheme
-    ? "min-h-[140px] bg-white border-[#d5e0e5] text-[#004555] placeholder:text-[#86a1a9] focus-visible:ring-[#004555]/30"
+    ? isGoldenTheme
+      ? "min-h-[140px] bg-[#101010] border-[#4a4a4a] text-[#f5f5f5] placeholder:text-[#a0a0a0] focus-visible:ring-[#fbc34a]/30"
+      : "min-h-[140px] bg-white border-[#d5e0e5] text-[#004555] placeholder:text-[#86a1a9] focus-visible:ring-[#004555]/30"
     : "min-h-[140px]";
-  const sectionTextClass = isIntroTheme ? "text-[#396d7a]" : "text-sm text-muted-foreground";
+  const sectionTextClass = isIntroTheme
+    ? isGoldenTheme
+      ? "text-[#a0a0a0]"
+      : "text-[#396d7a]"
+    : "text-sm text-muted-foreground";
 
   switch (step.type) {
     case "introduction_page":
       return (
-        <div className="border-y bg-[#f3f4f5]">
+        <div
+          className="border-y bg-[#f3f4f5]"
+          style={{ backgroundColor: isGoldenTheme ? "#101010" : undefined }}
+        >
           <div className="grid min-h-dvh grid-cols-1 md:grid-cols-[1.05fr_1fr]">
             <div className="relative min-h-[360px] md:min-h-dvh">
               <img
-                src={INTRO_IMAGE}
+                src={step.introductionImageUrl || defaultIntroImage}
                 alt="Luxury door handle"
                 className="absolute inset-0 h-full w-full object-cover"
               />
             </div>
             <div className="flex items-center">
               <div className="w-full max-w-[620px] px-8 py-10 md:px-14">
-                <img src={INTRO_MARK} alt="" className="h-16 w-12" />
+                <img src={defaultIntroLogo} alt="" className="h-16 w-12" />
                 <h1
                   className="mt-7 text-[46px] leading-[1.05] text-[#004555]"
                   style={{
-                    color: theme.colors.primary,
+                    color: emphasisTextColor,
                     fontFamily: theme.typography.headingFontFamily,
                     fontWeight: theme.typography.headingWeight,
+                    letterSpacing: goldenLetterSpacing,
                   }}
                 >
                   Become a client
@@ -371,19 +416,25 @@ function StepContent({
           </div>
         </div>
       );
-    case "contact_information":
+    case "contact_information": {
+      const contactInformationFields =
+        step.contactInformationFields ?? DEFAULT_CONTACT_INFORMATION_FIELDS;
       return (
         <div className="space-y-4">
           <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label className={labelClass}>Email Address</Label>
-              <Input type="email" placeholder="jane.doe@email.com" className={inputClass} />
-            </div>
-            <div className="grid gap-5">
+            {contactInformationFields.emailAddress && (
+              <div className="space-y-1.5">
+                <Label className={labelClass}>Email Address</Label>
+                <Input type="email" placeholder="jane.doe@email.com" className={inputClass} />
+              </div>
+            )}
+            {contactInformationFields.mobileNumber && (
               <div className="space-y-1.5">
                 <Label className={labelClass}>Mobile Number</Label>
                 <Input placeholder="+1 555 123 4567" className={inputClass} />
               </div>
+            )}
+            {contactInformationFields.preferredContactMethod && (
               <div className="space-y-1.5">
                 <Label className={labelClass}>Preferred Contact Method</Label>
                 <Select defaultValue="email">
@@ -398,14 +449,17 @@ function StepContent({
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label className={labelClass}>Best Time to Reach You</Label>
-              <Input placeholder="Weekdays, 9:00 - 17:00" className={inputClass} />
-            </div>
+            )}
+            {contactInformationFields.bestTimeToReachYou && (
+              <div className="space-y-1.5">
+                <Label className={labelClass}>Best Time to Reach You</Label>
+                <Input placeholder="Weekdays, 9:00 - 17:00" className={inputClass} />
+              </div>
+            )}
           </div>
         </div>
       );
+    }
     case "legal_residences":
       return (
         <div className="space-y-4">
@@ -456,7 +510,7 @@ function StepContent({
               </div>
               <div className="space-y-1.5">
                 <Label className={labelClass}>Nationality</Label>
-                <NationalityField className={inputClass} />
+                <NationalityField className={inputClass} isGoldenTheme={isIntroTheme && isGoldenTheme} />
               </div>
             </div>
           </div>
@@ -499,7 +553,7 @@ function StepContent({
             </div>
             <div className="space-y-1.5">
               <Label className={labelClass}>Incorporation Country</Label>
-              <NationalityField className={inputClass} />
+              <NationalityField className={inputClass} isGoldenTheme={isIntroTheme && isGoldenTheme} />
             </div>
           </div>
         </div>
@@ -575,17 +629,25 @@ function SplitStepRail({
   steps,
   currentIndex,
   theme,
+  isGoldenTheme = false,
+  logoSrc = INTRO_MARK,
 }: {
   steps: ReturnType<typeof buildStepsFromDraft>;
   currentIndex: number;
   theme: PreviewTheme;
+  isGoldenTheme?: boolean;
+  logoSrc?: string;
 }) {
+  const emphasisTextColor = isGoldenTheme ? theme.colors.text : theme.colors.primary;
   return (
     <aside
       className="w-[320px] border-r px-10 py-12"
-      style={{ borderColor: theme.colors.accent, backgroundColor: theme.colors.surface }}
+      style={{
+        borderColor: isGoldenTheme ? "#2f2f2f" : theme.colors.accent,
+        backgroundColor: isGoldenTheme ? "#101010" : theme.colors.surface,
+      }}
     >
-      <img src={INTRO_MARK} alt="Brand" className="h-16 w-12 mb-14" />
+      <img src={logoSrc} alt="Brand" className="h-16 w-12 mb-14" />
       <div className="space-y-8">
         {steps.map((step, index) => {
           const isDone = index < currentIndex;
@@ -610,7 +672,7 @@ function SplitStepRail({
                   style={{
                     borderColor: isDone || isActive ? theme.colors.primary : theme.colors.accent,
                     backgroundColor: isDone ? theme.colors.primary : undefined,
-                    color: isDone ? "#ffffff" : isActive ? theme.colors.primary : theme.colors.textSecondary,
+                    color: isDone ? "#ffffff" : isActive ? emphasisTextColor : theme.colors.textSecondary,
                   }}
                 >
                   {isDone ? "✓" : ""}
@@ -622,7 +684,7 @@ function SplitStepRail({
                   isActive ? "font-medium" : "",
                 ].join(" ")}
                 style={{
-                  color: isDone || isActive ? theme.colors.primary : theme.colors.textSecondary,
+                  color: isDone || isActive ? emphasisTextColor : theme.colors.textSecondary,
                 }}
               >
                 {step.name}
@@ -639,11 +701,14 @@ function TopStepProgress({
   steps,
   currentIndex,
   theme,
+  isGoldenTheme = false,
 }: {
   steps: ReturnType<typeof buildStepsFromDraft>;
   currentIndex: number;
   theme: PreviewTheme;
+  isGoldenTheme?: boolean;
 }) {
+  const emphasisTextColor = isGoldenTheme ? theme.colors.text : theme.colors.primary;
   return (
     <div
       className="border-b px-6 py-5"
@@ -659,18 +724,18 @@ function TopStepProgress({
               className="rounded-md border px-3 py-2"
               style={{
                 borderColor: isDone || isActive ? theme.colors.primary : `${theme.colors.accent}80`,
-                backgroundColor: isDone ? `${theme.colors.primary}12` : "#fff",
+                backgroundColor: isGoldenTheme ? "#101010" : isDone ? `${theme.colors.primary}12` : "#fff",
               }}
             >
               <p
                 className="text-xs font-semibold"
-                style={{ color: isDone || isActive ? theme.colors.primary : theme.colors.textSecondary }}
+                style={{ color: isDone || isActive ? emphasisTextColor : theme.colors.textSecondary }}
               >
                 Step {index + 1}
               </p>
               <p
                 className="mt-0.5 text-sm"
-                style={{ color: isDone || isActive ? theme.colors.primary : theme.colors.text }}
+                style={{ color: isDone || isActive ? emphasisTextColor : theme.colors.text }}
               >
                 {step.name}
               </p>
@@ -708,6 +773,14 @@ export default function FullFlowPreviewPage() {
     [themes, draft?.themeId],
   );
   const previewTheme = selectedTheme ?? DEFAULT_PREVIEW_THEME;
+  const isGoldenTheme = selectedTheme?.id === "theme_04";
+  const isInaBankTheme = selectedTheme?.id === "theme_05";
+  const previewHeadingColor = isGoldenTheme ? previewTheme.colors.text : previewTheme.colors.primary;
+  const introFallbackImage = isInaBankTheme ? INABANK_INTRO_IMAGE : INTRO_IMAGE;
+  const introFallbackLogo = isInaBankTheme ? INABANK_LOGO : INTRO_MARK;
+  const previewHeadingLetterSpacing = isGoldenTheme ? "-0.04em" : undefined;
+  const previewBackground = previewTheme.colors.background;
+  const previewTextColor = previewTheme.colors.text;
   const selectedLayout = draft?.flowLayout ?? "split";
   const isComplete = stepIndex >= orderedSteps.length;
   const currentStep = orderedSteps[stepIndex];
@@ -782,8 +855,8 @@ export default function FullFlowPreviewPage() {
     <div
       className="preview-kyc-flow min-h-screen"
       style={{
-        backgroundColor: previewTheme.colors.background,
-        color: previewTheme.colors.text,
+        backgroundColor: previewBackground,
+        color: previewTextColor,
         fontFamily: previewTheme.typography.fontFamily,
         fontSize: previewTheme.typography.baseFontSize,
       }}
@@ -792,42 +865,34 @@ export default function FullFlowPreviewPage() {
         <Button
           variant="secondary"
           size="sm"
-          className="preview-kyc-platform-button shadow-md bg-white/90 backdrop-blur"
+          className="preview-kyc-platform-button border border-slate-200 bg-white text-slate-900 shadow-md hover:bg-slate-50"
           onClick={() => setShowTopBar((v) => !v)}
         >
-          {showTopBar ? "Hide Header" : "Show Header"}
+          {showTopBar ? "Hide Header" : "Admin Panel"}
         </Button>
       </div>
 
       {showTopBar && (
-        <header
-          className="border-b bg-white/70 backdrop-blur px-8 py-4"
-          style={{ borderColor: `${previewTheme.colors.accent}80` }}
-        >
+        <header className="border-b border-slate-200 bg-white px-8 py-4">
           <div className="flex items-center justify-between gap-4">
             <div>
               <p
                 className="text-lg font-medium"
                 style={{
-                  color: previewTheme.colors.primary,
-                  fontFamily: previewTheme.typography.headingFontFamily,
-                  fontWeight: previewTheme.typography.headingWeight,
+                  color: "#0f172a",
+                  fontFamily: "IBM Plex Sans, system-ui, sans-serif",
+                  fontWeight: "600",
                 }}
               >
                 {draft.name || "Customer Onboarding"}
               </p>
-              <p className="text-sm" style={{ color: previewTheme.colors.textSecondary }}>
+              <p className="text-sm text-slate-600">
                 Full-screen end-customer flow preview
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <div
-                className="flex items-center gap-2 rounded-md border bg-white/70 px-2.5 py-1.5"
-                style={{ borderColor: `${previewTheme.colors.accent}80` }}
-              >
-                <span className="text-xs" style={{ color: previewTheme.colors.textSecondary }}>
-                  Validation
-                </span>
+              <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5">
+                <span className="text-xs text-slate-600">Validation</span>
                 <Switch
                   checked={formValidationEnabled}
                   onCheckedChange={setFormValidationEnabled}
@@ -838,7 +903,7 @@ export default function FullFlowPreviewPage() {
             </div>
           </div>
           <div className="space-y-1 mt-3">
-            <div className="flex items-center justify-between text-xs" style={{ color: previewTheme.colors.textSecondary }}>
+            <div className="flex items-center justify-between text-xs text-slate-600">
               <span>
                 {isComplete
                   ? `Completed ${orderedSteps.length} of ${orderedSteps.length} steps`
@@ -858,23 +923,33 @@ export default function FullFlowPreviewPage() {
                 <StepContent
                 step={currentStep}
                   theme={previewTheme}
+                  isGoldenTheme={isGoldenTheme}
+                  defaultIntroImage={introFallbackImage}
+                  defaultIntroLogo={introFallbackLogo}
                 onContinue={() => setStepIndex((i) => Math.min(orderedSteps.length, i + 1))}
               />
             ) : selectedLayout === "split" ? (
               <div className={showTopBar ? "grid min-h-[calc(100vh-97px)] grid-cols-[320px_1fr]" : "grid min-h-screen grid-cols-[320px_1fr]"}>
-                <SplitStepRail steps={orderedSteps} currentIndex={stepIndex} theme={previewTheme} />
+                <SplitStepRail
+                  steps={orderedSteps}
+                  currentIndex={stepIndex}
+                  theme={previewTheme}
+                  isGoldenTheme={isGoldenTheme}
+                  logoSrc={introFallbackLogo}
+                />
                 <section
                   className="px-12 py-14 flex items-center justify-center"
-                  style={{ backgroundColor: previewTheme.colors.background }}
+                  style={{ backgroundColor: previewBackground }}
                 >
                   <div className="w-full max-w-[640px] min-h-[760px] space-y-8">
                     <div>
                       <h2
                         className="text-[48px] leading-[1.05] tracking-[-0.02em]"
                         style={{
-                          color: previewTheme.colors.primary,
+                          color: previewHeadingColor,
                           fontFamily: previewTheme.typography.headingFontFamily,
                           fontWeight: previewTheme.typography.headingWeight,
+                          letterSpacing: previewHeadingLetterSpacing,
                         }}
                       >
                         {currentStep.name}
@@ -889,6 +964,7 @@ export default function FullFlowPreviewPage() {
                         step={currentStep}
                         variant="intro"
                         theme={previewTheme}
+                        isGoldenTheme={isGoldenTheme}
                         onContinue={handleProceed}
                       />
                     </div>
@@ -901,7 +977,7 @@ export default function FullFlowPreviewPage() {
                         className="h-[56px] w-[180px] rounded-none"
                         style={{
                           borderColor: `${previewTheme.colors.primary}66`,
-                          color: previewTheme.colors.primary,
+                          color: previewHeadingColor,
                         }}
                       >
                         Previous
@@ -919,16 +995,22 @@ export default function FullFlowPreviewPage() {
               </div>
             ) : (
               <div className={showTopBar ? "min-h-[calc(100vh-97px)]" : "min-h-screen"}>
-                <TopStepProgress steps={orderedSteps} currentIndex={stepIndex} theme={previewTheme} />
-                <section className="px-10 py-12" style={{ backgroundColor: previewTheme.colors.background }}>
+                <TopStepProgress
+                  steps={orderedSteps}
+                  currentIndex={stepIndex}
+                  theme={previewTheme}
+                  isGoldenTheme={isGoldenTheme}
+                />
+                <section className="px-10 py-12" style={{ backgroundColor: previewBackground }}>
                   <div className="mx-auto w-full max-w-[1180px] space-y-8">
                     <div>
                       <h2
                         className="text-[48px] leading-[1.05] tracking-[-0.02em]"
                         style={{
-                          color: previewTheme.colors.primary,
+                          color: previewHeadingColor,
                           fontFamily: previewTheme.typography.headingFontFamily,
                           fontWeight: previewTheme.typography.headingWeight,
+                          letterSpacing: previewHeadingLetterSpacing,
                         }}
                       >
                         {currentStep.name}
@@ -943,6 +1025,7 @@ export default function FullFlowPreviewPage() {
                         step={currentStep}
                         variant="intro"
                         theme={previewTheme}
+                        isGoldenTheme={isGoldenTheme}
                         onContinue={handleProceed}
                       />
                     </div>
@@ -955,7 +1038,7 @@ export default function FullFlowPreviewPage() {
                         className="h-[56px] w-[180px] rounded-none"
                         style={{
                           borderColor: `${previewTheme.colors.primary}66`,
-                          color: previewTheme.colors.primary,
+                          color: previewHeadingColor,
                         }}
                       >
                         Previous

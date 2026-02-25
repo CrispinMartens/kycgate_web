@@ -3,7 +3,10 @@
 import { useRouter } from "next/navigation";
 import { WorkflowCanvas } from "@/components/workflow-builder/workflow-canvas";
 import type { Node, Edge } from "@xyflow/react";
-import type { StepNodeData } from "@/components/workflow-builder/node-types";
+import {
+  DEFAULT_CONTACT_INFORMATION_FIELDS,
+  type StepNodeData,
+} from "@/components/workflow-builder/node-types";
 
 type WorkflowDraft = {
   name: string;
@@ -41,13 +44,22 @@ function buildStepsFromDraft(workflow: WorkflowDraft) {
 
   return allSteps.map((node, i) => {
     const data = node.data as unknown as StepNodeData;
+    const config: Record<string, unknown> = {};
+    if (data.stepType === "introduction_page" && data.introductionImageUrl) {
+      config.introductionImageUrl = data.introductionImageUrl;
+    }
+    if (data.stepType === "contact_information") {
+      config.contactInformationFields =
+        data.contactInformationFields ?? DEFAULT_CONTACT_INFORMATION_FIELDS;
+    }
+
     return {
       id: node.id,
       name: data.label,
       type: data.stepType,
       order: i + 1,
       required: data.required,
-      config: {},
+      config,
       timeoutHours: data.timeoutHours,
     };
   });

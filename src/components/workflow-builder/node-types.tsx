@@ -32,12 +32,28 @@ export type VerificationOutcomeAction =
   | "retry_verification"
   | "reject";
 
+export interface ContactInformationFields {
+  emailAddress: boolean;
+  mobileNumber: boolean;
+  preferredContactMethod: boolean;
+  bestTimeToReachYou: boolean;
+}
+
+export const DEFAULT_CONTACT_INFORMATION_FIELDS: ContactInformationFields = {
+  emailAddress: true,
+  mobileNumber: true,
+  preferredContactMethod: true,
+  bestTimeToReachYou: true,
+};
+
 export interface StepNodeData {
   label: string;
   stepType: string;
   required: boolean;
   timeoutHours?: number;
   description?: string;
+  introductionImageUrl?: string;
+  contactInformationFields?: ContactInformationFields;
   verificationSuccessAction?: VerificationOutcomeAction;
   verificationFailureAction?: VerificationOutcomeAction;
 }

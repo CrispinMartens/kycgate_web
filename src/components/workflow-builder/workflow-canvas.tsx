@@ -22,7 +22,7 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import { nodeTypes } from "./node-types";
-import type { StepNodeData } from "./node-types";
+import { DEFAULT_CONTACT_INFORMATION_FIELDS, type StepNodeData } from "./node-types";
 import { StepPalette, paletteItems, type PaletteItem } from "./step-palette";
 import { NodeConfigPanel } from "./node-config-panel";
 import { Button } from "@/components/ui/button";
@@ -79,6 +79,18 @@ const getVerificationDefaults = (stepType: string): Partial<StepNodeData> => {
     verificationFailureAction: "manual_review",
   };
 };
+
+const getContactInformationDefaults = (stepType: string): Partial<StepNodeData> => {
+  if (stepType !== "contact_information") return {};
+  return {
+    contactInformationFields: { ...DEFAULT_CONTACT_INFORMATION_FIELDS },
+  };
+};
+
+const getStepDefaults = (stepType: string): Partial<StepNodeData> => ({
+  ...getVerificationDefaults(stepType),
+  ...getContactInformationDefaults(stepType),
+});
 
 const createIntroductionNode = (): Node => ({
   id: INTRO_NODE_ID,
@@ -309,7 +321,7 @@ function WorkflowCanvasInner({ onSave, onPreview, onBack }: WorkflowCanvasProps)
             stepType: item.stepType,
             required: true,
             description: item.description,
-            ...getVerificationDefaults(item.stepType),
+            ...getStepDefaults(item.stepType),
           } satisfies StepNodeData,
         };
         connectFlowWithNewNode(fallbackNode);
@@ -336,7 +348,7 @@ function WorkflowCanvasInner({ onSave, onPreview, onBack }: WorkflowCanvasProps)
           stepType: item.stepType,
           required: true,
           description: item.description,
-          ...getVerificationDefaults(item.stepType),
+          ...getStepDefaults(item.stepType),
         } satisfies StepNodeData,
       };
 
@@ -509,7 +521,7 @@ function WorkflowCanvasInner({ onSave, onPreview, onBack }: WorkflowCanvasProps)
           stepType: item.stepType,
           required: true,
           description: item.description,
-          ...getVerificationDefaults(item.stepType),
+          ...getStepDefaults(item.stepType),
         } satisfies StepNodeData,
       };
       lastAddedStepId.current = newId;
@@ -652,7 +664,35 @@ function WorkflowCanvasInner({ onSave, onPreview, onBack }: WorkflowCanvasProps)
       nodes,
       edges,
     };
-    sessionStorage.setItem(WORKFLOW_DRAFT_KEY, JSON.stringify(draft));
+    try {
+      sessionStorage.setItem(WORKFLOW_DRAFT_KEY, JSON.stringify(draft));
+    } catch (error) {
+      const isQuotaExceeded =
+        error instanceof DOMException && error.name === "QuotaExceededError";
+      if (!isQuotaExceeded) return;
+
+      const reducedDraft = {
+        ...draft,
+        nodes: nodes.map((node) => {
+          if (node.type !== "stepNode") return node;
+          const nodeData = node.data as unknown as StepNodeData;
+          if (!nodeData.introductionImageUrl) return node;
+          return {
+            ...node,
+            data: {
+              ...nodeData,
+              introductionImageUrl: undefined,
+            },
+          };
+        }),
+      };
+
+      try {
+        sessionStorage.setItem(WORKFLOW_DRAFT_KEY, JSON.stringify(reducedDraft));
+      } catch {
+        // Ignore storage errors in draft autosave.
+      }
+    }
   }, [hasHydratedDraft, workflowName, workflowDescription, workflowType, applicantType, themeId, flowLayout, nodes, edges]);
 
   return (
@@ -948,6 +988,42 @@ function WorkflowCanvasInner({ onSave, onPreview, onBack }: WorkflowCanvasProps)
                           />
                         </div>
                       </div>
+
+                      {data.stepType === "contact_information" && (
+                        <div className="rounded-md border p-3 space-y-2">
+                          <p className="text-xs font-medium">Contact Fields to Ask</p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {([
+                              ["emailAddress", "Email Address"],
+                              ["mobileNumber", "Mobile Number"],
+                              ["preferredContactMethod", "Preferred Contact Method"],
+                              ["bestTimeToReachYou", "Best Time to Reach You"],
+                            ] as const).map(([fieldKey, label]) => {
+                              const fields =
+                                data.contactInformationFields ?? DEFAULT_CONTACT_INFORMATION_FIELDS;
+                              return (
+                                <div
+                                  key={fieldKey}
+                                  className="flex items-center justify-between rounded-md border px-2.5 py-2"
+                                >
+                                  <span className="text-xs">{label}</span>
+                                  <Switch
+                                    checked={fields[fieldKey]}
+                                    onCheckedChange={(checked) =>
+                                      updateNodeData(node.id, {
+                                        contactInformationFields: {
+                                          ...fields,
+                                          [fieldKey]: checked,
+                                        },
+                                      })
+                                    }
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
 
                       <div className="flex items-center justify-between rounded-md border px-3 py-2">
                         <span className="text-xs text-muted-foreground">Required step</span>
