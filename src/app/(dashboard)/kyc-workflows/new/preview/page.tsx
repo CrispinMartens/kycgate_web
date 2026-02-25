@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Edge, Node } from "@xyflow/react";
-import { ArrowLeft, Save, AlertCircle, CheckCircle2, ShieldCheck, Upload, FileText, Expand } from "lucide-react";
+import { ArrowLeft, Save, AlertCircle, Check, CheckCircle2, ChevronDown, ShieldCheck, Upload, FileText, Expand } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -11,21 +11,163 @@ import { Progress } from "@/components/ui/progress";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { StepNodeData } from "@/components/workflow-builder/node-types";
+import { cn } from "@/lib/utils";
+import { DatePickerField } from "@/components/shared/date-picker-field";
+import { useFetch } from "@/hooks/use-fetch";
+import type { ThemeConfig } from "@/types";
 
-const INTRO_IMAGE =
-  "http://localhost:3845/assets/fe90864170fe71788a5168267867913e53248551.png";
-const INTRO_MARK =
-  "http://localhost:3845/assets/875f40dbfbc030fffe01dba90b6f050410ffb9aa.svg";
+const INTRO_IMAGE = "/kyc-intro-hero.svg";
+const INTRO_MARK = "/kyc-intro-mark.svg";
 
 type WorkflowDraft = {
   name: string;
   description: string;
   type: string;
   applicantType: string;
+  themeId?: string;
+  flowLayout?: "split" | "steps_top";
   nodes: Node[];
   edges: Edge[];
 };
+
+type PreviewTheme = Pick<ThemeConfig, "colors" | "typography">;
+
+const DEFAULT_PREVIEW_THEME: PreviewTheme = {
+  colors: {
+    primary: "#004555",
+    secondary: "#396d7a",
+    accent: "#86a1a9",
+    background: "#f3f4f5",
+    surface: "#f7f9fa",
+    text: "#0f172a",
+    textSecondary: "#396d7a",
+    success: "#16a34a",
+    warning: "#d97706",
+    error: "#dc2626",
+    info: "#2563eb",
+  },
+  typography: {
+    fontFamily: "Proxima Nova, IBM Plex Sans, system-ui, sans-serif",
+    headingFontFamily: "GT Alpina, Times New Roman, serif",
+    baseFontSize: "14px",
+    headingWeight: "600",
+  },
+};
+
+const SCREENING_STEP_TYPES = new Set([
+  "sanctions_screening",
+  "pep_check",
+  "adverse_media",
+]);
+
+const NATIONALITY_OPTIONS = [
+  "United States",
+  "United Kingdom",
+  "Canada",
+  "Germany",
+  "France",
+  "Italy",
+  "Spain",
+  "Netherlands",
+  "Switzerland",
+  "Sweden",
+  "Norway",
+  "Denmark",
+  "Ireland",
+  "Portugal",
+  "Belgium",
+  "Austria",
+  "Poland",
+  "Czech Republic",
+  "Romania",
+  "Greece",
+  "Turkey",
+  "United Arab Emirates",
+  "Saudi Arabia",
+  "India",
+  "Singapore",
+  "Hong Kong",
+  "Japan",
+  "South Korea",
+  "Australia",
+  "New Zealand",
+  "Brazil",
+  "Mexico",
+  "South Africa",
+  "Nigeria",
+];
+
+function NationalityField({ className }: { className?: string }) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState("");
+  const [query, setQuery] = useState("");
+  const filtered = useMemo(() => {
+    const search = query.trim().toLowerCase();
+    if (!search) return NATIONALITY_OPTIONS;
+    return NATIONALITY_OPTIONS.filter((country) =>
+      country.toLowerCase().includes(search),
+    );
+  }, [query]);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "preview-kyc-dropdown-trigger flex h-10 w-full items-center justify-between rounded-md border bg-white px-3 text-left text-sm",
+            value ? "text-[#004555]" : "text-[#86a1a9]",
+            className,
+          )}
+        >
+          <span>{value || "Select nationality"}</span>
+          <ChevronDown className="h-4 w-4 opacity-70" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        sideOffset={6}
+        className="w-(--radix-popover-trigger-width) max-h-[280px] p-2"
+      >
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search nationality..."
+          className="h-9"
+        />
+        <ScrollArea className="mt-2 h-40">
+          <div className="space-y-1">
+            {filtered.map((country) => (
+              <button
+                key={country}
+                type="button"
+                onClick={() => {
+                  setValue(country);
+                  setOpen(false);
+                  setQuery("");
+                }}
+                className="flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted"
+              >
+                <span>{country}</span>
+                {value === country && <Check className="h-4 w-4 text-[#004555]" />}
+              </button>
+            ))}
+            {filtered.length === 0 && (
+              <p className="px-2 py-1.5 text-sm text-muted-foreground">
+                No nationality found.
+              </p>
+            )}
+          </div>
+        </ScrollArea>
+      </PopoverContent>
+      <input value={value} onChange={() => undefined} className="sr-only" aria-hidden />
+    </Popover>
+  );
+}
 
 function buildStepsFromDraft(workflow: WorkflowDraft) {
   const stepNodes = workflow.nodes.filter((n) => n.type === "stepNode");
@@ -47,7 +189,10 @@ function buildStepsFromDraft(workflow: WorkflowDraft) {
   }
 
   const unlinked = stepNodes.filter((n) => !ordered.some((o) => o.id === n.id));
-  const allSteps = [...ordered, ...unlinked];
+  const allSteps = [...ordered, ...unlinked].filter((node) => {
+    const data = node.data as unknown as StepNodeData;
+    return !SCREENING_STEP_TYPES.has(data.stepType);
+  });
 
   return allSteps.map((node, i) => {
     const data = node.data as unknown as StepNodeData;
@@ -63,14 +208,44 @@ function buildStepsFromDraft(workflow: WorkflowDraft) {
   });
 }
 
+function getStepHeadlineSubtext(stepType: string) {
+  switch (stepType) {
+    case "personal_information":
+      return "This helps confirm your legal identity.";
+    case "contact_information":
+      return "This lets us contact you about onboarding updates.";
+    case "legal_residences":
+      return "This is needed to meet tax and residency regulations.";
+    case "document_collection":
+    case "identity_verification":
+      return "This is required to verify your documents and identity.";
+    case "address_verification":
+      return "This is used to validate your current address.";
+    case "biometric_check":
+      return "This confirms you match your identification document.";
+    case "business_verification":
+      return "This verifies your business registration details.";
+    case "ubo_verification":
+      return "This identifies beneficial owners for transparency checks.";
+    case "risk_assessment":
+      return "This helps assess your compliance risk profile.";
+    case "manual_review":
+      return "This supports compliance during the final review.";
+    default:
+      return "This information is needed to complete regulatory onboarding.";
+  }
+}
+
 function StepContent({
   step,
   onContinue,
   variant = "light",
+  theme = DEFAULT_PREVIEW_THEME,
 }: {
   step: ReturnType<typeof buildStepsFromDraft>[number];
   onContinue: () => void;
   variant?: "light" | "intro";
+  theme?: PreviewTheme;
 }) {
   const isIntroTheme = variant === "intro";
   const labelClass = isIntroTheme ? "text-[#004555]" : "";
@@ -94,17 +269,28 @@ function StepContent({
             <div className="flex items-center">
               <div className="w-full max-w-[620px] px-8 py-10 md:px-14">
                 <img src={INTRO_MARK} alt="" className="h-16 w-12" />
-                <h1 className="mt-7 text-[46px] leading-[1.05] font-serif text-[#004555]">
+                <h1
+                  className="mt-7 text-[46px] leading-[1.05] text-[#004555]"
+                  style={{
+                    color: theme.colors.primary,
+                    fontFamily: theme.typography.headingFontFamily,
+                    fontWeight: theme.typography.headingWeight,
+                  }}
+                >
                   Become a client
                 </h1>
-                <p className="mt-4 text-[16px] leading-[1.95] text-[#396d7a] max-w-[560px]">
+                <p
+                  className="mt-4 text-[16px] leading-[1.95] text-[#396d7a] max-w-[560px]"
+                  style={{ color: theme.colors.textSecondary }}
+                >
                   With more than 300 years of heritage in private banking and investment
                   management, we partner with entrepreneurs, executives and families to grow,
                   protect and transfer wealth across generations.
                 </p>
                 <Button
                   onClick={onContinue}
-                  className="mt-9 h-[49px] w-full rounded-none bg-[#004555] text-[24px] font-serif hover:bg-[#003a48]"
+                  className="mt-9 h-[49px] w-full rounded-none bg-[#004555] text-[24px] hover:bg-[#003a48]"
+                  style={{ backgroundColor: theme.colors.primary, fontFamily: theme.typography.fontFamily }}
                 >
                   Proceed
                 </Button>
@@ -115,6 +301,7 @@ function StepContent({
       );
 
     case "document_collection":
+    case "identity_verification":
       return (
         <div className="space-y-4">
           <div className={`rounded-lg border border-dashed p-6 text-center ${isIntroTheme ? "border-[#b8cdd5] bg-white" : ""}`}>
@@ -131,11 +318,32 @@ function StepContent({
           <div className="grid gap-3 md:grid-cols-2">
             <div className="space-y-1.5">
               <Label className={labelClass}>Document Type</Label>
-              <Input defaultValue="Passport" className={inputClass} />
+              <Select defaultValue="passport">
+                <SelectTrigger className={`w-full data-[size=default]:h-9 ${inputClass}`}>
+                  <SelectValue placeholder="Select document type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="passport">Passport</SelectItem>
+                  <SelectItem value="national_id">National ID</SelectItem>
+                  <SelectItem value="drivers_license">Driver's License</SelectItem>
+                  <SelectItem value="residence_permit">Residence Permit</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <Label className={labelClass}>Issuing Country</Label>
-              <Input defaultValue="United States" className={inputClass} />
+              <Select defaultValue="United States">
+                <SelectTrigger className={`w-full data-[size=default]:h-9 ${inputClass}`}>
+                  <SelectValue placeholder="Select issuing country" />
+                </SelectTrigger>
+                <SelectContent>
+                  {NATIONALITY_OPTIONS.map((country) => (
+                    <SelectItem key={country} value={country}>
+                      {country}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </div>
@@ -158,16 +366,44 @@ function StepContent({
             <div className="grid gap-3 md:grid-cols-2">
               <div className="space-y-1.5">
                 <Label className={labelClass}>Date of Birth</Label>
-                <Input type="date" className={inputClass} />
-              </div>
-              <div className="space-y-1.5">
-                <Label className={labelClass}>Nationality</Label>
-                <Input placeholder="United States" className={inputClass} />
+                <DatePickerField className={inputClass} required />
               </div>
             </div>
+          </div>
+        </div>
+      );
+
+    case "contact_information":
+      return (
+        <div className="space-y-4">
+          <div className={`rounded-lg border p-4 space-y-3 ${isIntroTheme ? "border-[#d5e0e5] bg-white" : ""}`}>
             <div className="space-y-1.5">
               <Label className={labelClass}>Email Address</Label>
               <Input type="email" placeholder="jane.doe@email.com" className={inputClass} />
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label className={labelClass}>Mobile Number</Label>
+                <Input placeholder="+1 555 123 4567" className={inputClass} />
+              </div>
+              <div className="space-y-1.5">
+                <Label className={labelClass}>Preferred Contact Method</Label>
+                <Select defaultValue="email">
+                  <SelectTrigger className={`w-full data-[size=default]:h-9 ${inputClass}`}>
+                    <SelectValue placeholder="Select contact method" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="email">Email</SelectItem>
+                    <SelectItem value="phone">Phone Call</SelectItem>
+                    <SelectItem value="sms">SMS</SelectItem>
+                    <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className={labelClass}>Best Time to Reach You</Label>
+              <Input placeholder="Weekdays, 9:00 - 17:00" className={inputClass} />
             </div>
           </div>
         </div>
@@ -176,13 +412,21 @@ function StepContent({
     case "legal_residences":
       return (
         <div className="space-y-4">
-          <p className={sectionTextClass}>
-            Tell us where you are legally resident for tax and compliance purposes.
-          </p>
           <div className={`rounded-lg border p-4 space-y-3 ${isIntroTheme ? "border-[#d5e0e5] bg-white" : ""}`}>
             <div className="space-y-1.5">
               <Label className={labelClass}>Primary Country of Legal Residence</Label>
-              <Input placeholder="United Kingdom" className={inputClass} />
+              <Select defaultValue="United Kingdom">
+                <SelectTrigger className={`w-full data-[size=default]:h-9 ${inputClass}`}>
+                  <SelectValue placeholder="Select primary legal residence country" />
+                </SelectTrigger>
+                <SelectContent>
+                  {NATIONALITY_OPTIONS.map((country) => (
+                    <SelectItem key={country} value={country}>
+                      {country}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
               <div className="space-y-1.5">
@@ -191,14 +435,13 @@ function StepContent({
               </div>
               <div className="space-y-1.5">
                 <Label className={labelClass}>Resident Since</Label>
-                <Input type="date" className={inputClass} />
+                <DatePickerField className={inputClass} required />
               </div>
             </div>
           </div>
         </div>
       );
 
-    case "identity_verification":
     case "biometric_check":
       return (
         <div className="space-y-4">
@@ -213,11 +456,11 @@ function StepContent({
             <div className="grid gap-3 md:grid-cols-2">
               <div className="space-y-1.5">
                 <Label className={labelClass}>Date of Birth</Label>
-                <Input type="date" className={inputClass} />
+                <DatePickerField className={inputClass} required />
               </div>
               <div className="space-y-1.5">
                 <Label className={labelClass}>Nationality</Label>
-                <Input placeholder="US" className={inputClass} />
+                <NationalityField className={inputClass} />
               </div>
             </div>
           </div>
@@ -262,7 +505,7 @@ function StepContent({
             </div>
             <div className="space-y-1.5">
               <Label className={labelClass}>Incorporation Country</Label>
-              <Input placeholder="US" className={inputClass} />
+              <NationalityField className={inputClass} />
             </div>
           </div>
         </div>
@@ -344,12 +587,17 @@ function StepContent({
 function SplitStepRail({
   steps,
   currentIndex,
+  theme,
 }: {
   steps: ReturnType<typeof buildStepsFromDraft>;
   currentIndex: number;
+  theme: PreviewTheme;
 }) {
   return (
-    <aside className="w-[320px] border-r border-[#d8e3e7] px-10 py-12 bg-[#f7f9fa]">
+    <aside
+      className="w-[320px] border-r px-10 py-12"
+      style={{ borderColor: theme.colors.accent, backgroundColor: theme.colors.surface }}
+    >
       <img src={INTRO_MARK} alt="Brand" className="h-16 w-12 mb-14" />
       <div className="space-y-8">
         {steps.map((step, index) => {
@@ -357,23 +605,38 @@ function SplitStepRail({
           const isActive = index === currentIndex;
           return (
             <div key={step.id} className="flex items-center gap-4">
-              <div
-                className={[
-                  "h-5 w-5 rounded-full border flex items-center justify-center text-[10px]",
-                  isDone
-                    ? "bg-[#004555] border-[#004555] text-white"
-                    : isActive
-                      ? "border-[#004555] text-[#004555]"
-                      : "border-[#c7d6dc] text-[#8ba3ab]",
-                ].join(" ")}
-              >
-                {isDone ? "✓" : ""}
+              <div className="relative h-5 w-5">
+                {isActive ? (
+                  <span
+                    className="absolute inset-0 rounded-full border-2 animate-spin [animation-duration:2s]"
+                    style={{
+                      borderColor: `${theme.colors.primary}40`,
+                      borderTopColor: theme.colors.primary,
+                    }}
+                  />
+                ) : null}
+                <div
+                  className={[
+                    "h-5 w-5 rounded-full border flex items-center justify-center text-[10px]",
+                    isDone ? "text-white" : isActive ? "bg-white" : "",
+                  ].join(" ")}
+                  style={{
+                    borderColor: isDone || isActive ? theme.colors.primary : theme.colors.accent,
+                    backgroundColor: isDone ? theme.colors.primary : undefined,
+                    color: isDone ? "#ffffff" : isActive ? theme.colors.primary : theme.colors.textSecondary,
+                  }}
+                >
+                  {isDone ? "✓" : ""}
+                </div>
               </div>
               <span
                 className={[
                   "text-sm",
-                  isDone ? "text-[#004555]" : isActive ? "text-[#004555] font-medium" : "text-[#8ba3ab]",
+                  isActive ? "font-medium" : "",
                 ].join(" ")}
+                style={{
+                  color: isDone || isActive ? theme.colors.primary : theme.colors.textSecondary,
+                }}
               >
                 {step.name}
               </span>
@@ -385,11 +648,60 @@ function SplitStepRail({
   );
 }
 
+function TopStepProgress({
+  steps,
+  currentIndex,
+  theme,
+}: {
+  steps: ReturnType<typeof buildStepsFromDraft>;
+  currentIndex: number;
+  theme: PreviewTheme;
+}) {
+  return (
+    <div
+      className="border-b px-6 py-5"
+      style={{ borderColor: `${theme.colors.accent}80`, backgroundColor: theme.colors.surface }}
+    >
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {steps.map((step, index) => {
+          const isDone = index < currentIndex;
+          const isActive = index === currentIndex;
+          return (
+            <div
+              key={step.id}
+              className="rounded-md border px-3 py-2"
+              style={{
+                borderColor: isDone || isActive ? theme.colors.primary : `${theme.colors.accent}80`,
+                backgroundColor: isDone ? `${theme.colors.primary}12` : "#fff",
+              }}
+            >
+              <p
+                className="text-xs font-semibold"
+                style={{ color: isDone || isActive ? theme.colors.primary : theme.colors.textSecondary }}
+              >
+                Step {index + 1}
+              </p>
+              <p
+                className="mt-0.5 text-sm"
+                style={{ color: isDone || isActive ? theme.colors.primary : theme.colors.text }}
+              >
+                {step.name}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function PreviewFlowPageInner() {
   const router = useRouter();
   const [draft, setDraft] = useState<WorkflowDraft | null>(null);
   const [saving, setSaving] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
+  const stepFieldsRef = useRef<HTMLDivElement | null>(null);
+  const { data: themes } = useFetch<ThemeConfig[]>("/api/themes");
 
   useEffect(() => {
     const raw = sessionStorage.getItem("kycgate.workflowDraft");
@@ -402,10 +714,62 @@ function PreviewFlowPageInner() {
   }, []);
 
   const orderedSteps = useMemo(() => (draft ? buildStepsFromDraft(draft) : []), [draft]);
+  const selectedTheme = useMemo(
+    () => themes?.find((item) => item.id === draft?.themeId),
+    [themes, draft?.themeId],
+  );
+  const previewTheme = selectedTheme ?? DEFAULT_PREVIEW_THEME;
+  const selectedLayout = draft?.flowLayout ?? "split";
   const isComplete = stepIndex >= orderedSteps.length;
   const currentStep = orderedSteps[stepIndex];
   const progress =
     orderedSteps.length === 0 ? 0 : Math.round((Math.min(stepIndex, orderedSteps.length) / orderedSteps.length) * 100);
+
+  const validateCurrentStepFields = () => {
+    const container = stepFieldsRef.current;
+    if (!container) return true;
+
+    const fields = container.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input, textarea");
+    if (fields.length === 0) return true;
+
+    for (const field of fields) {
+      const value = field.value.trim();
+      field.setCustomValidity("");
+
+      if (!value) {
+        field.setCustomValidity("This field is required.");
+        field.reportValidity();
+        return false;
+      }
+
+      if (field instanceof HTMLInputElement && field.type === "email") {
+        const isValidEmail = /\S+@\S+\.\S+/.test(value);
+        if (!isValidEmail) {
+          field.setCustomValidity("Please enter a valid email address.");
+          field.reportValidity();
+          return false;
+        }
+      }
+    }
+
+    const dateFields = container.querySelectorAll<HTMLButtonElement>(
+      'button[data-datepicker-required="true"]',
+    );
+    for (const dateField of dateFields) {
+      const value = (dateField.dataset.datepickerValue ?? "").trim();
+      if (!value) {
+        dateField.focus();
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const handleProceed = () => {
+    if (!validateCurrentStepFields()) return;
+    setStepIndex((i) => Math.min(orderedSteps.length, i + 1));
+  };
 
   const handleSave = async () => {
     if (!draft) return;
@@ -420,6 +784,8 @@ function PreviewFlowPageInner() {
         description: draft.description,
         type: draft.type,
         applicantType: draft.applicantType,
+        themeId: draft.themeId,
+        flowLayout: selectedLayout,
         steps: orderedSteps.map((step) => ({
           id: step.id,
           name: step.name,
@@ -444,10 +810,15 @@ function PreviewFlowPageInner() {
     window.open("/kyc-flow-preview/full", "_blank", "noopener,noreferrer");
   };
 
+  const handleBackToBuilder = () => {
+    sessionStorage.setItem("kycgate.resumeDraft", "1");
+    router.push("/kyc-workflows/new");
+  };
+
   if (!draft) {
     return (
       <div className="space-y-4">
-        <Button variant="ghost" onClick={() => router.push("/kyc-workflows/new")}>
+        <Button variant="ghost" onClick={handleBackToBuilder}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back to Builder
         </Button>
@@ -465,10 +836,18 @@ function PreviewFlowPageInner() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-3.5rem)] bg-muted/20 -m-6 p-6">
+    <div
+      className="preview-kyc-flow min-h-[calc(100vh-3.5rem)] -m-6 p-6"
+      style={{
+        backgroundColor: previewTheme.colors.background,
+        color: previewTheme.colors.text,
+        fontFamily: previewTheme.typography.fontFamily,
+        fontSize: previewTheme.typography.baseFontSize,
+      }}
+    >
       <div className="max-w-4xl mx-auto space-y-6">
         <div className="flex items-center justify-between">
-          <Button variant="ghost" onClick={() => router.push("/kyc-workflows/new")}>
+          <Button variant="ghost" onClick={handleBackToBuilder}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Builder
           </Button>
@@ -526,41 +905,63 @@ function PreviewFlowPageInner() {
                 {currentStep.type === "introduction_page" ? (
                   <StepContent
                     step={currentStep}
+                    theme={previewTheme}
                     onContinue={() => setStepIndex((i) => Math.min(orderedSteps.length, i + 1))}
                   />
-                ) : (
-                  <div className="-mx-6 -my-4 border-y border-[#d8e3e7] bg-[#f3f4f5]">
+                ) : selectedLayout === "split" ? (
+                  <div
+                    className="-mx-6 -my-4 border-y"
+                    style={{
+                      borderColor: `${previewTheme.colors.accent}80`,
+                      backgroundColor: previewTheme.colors.background,
+                    }}
+                  >
                     <div className="grid min-h-[640px] grid-cols-[320px_1fr]">
-                      <SplitStepRail steps={orderedSteps} currentIndex={stepIndex} />
-                      <section className="px-12 py-14 bg-[#f3f4f5]">
+                      <SplitStepRail steps={orderedSteps} currentIndex={stepIndex} theme={previewTheme} />
+                      <section className="px-12 py-14" style={{ backgroundColor: previewTheme.colors.background }}>
                         <div className="max-w-[640px] space-y-8">
                           <div>
-                            <h2 className="text-[48px] leading-[1.05] text-[#004555] tracking-[-0.02em]">
+                            <h2
+                              className="text-[48px] leading-[1.05] tracking-[-0.02em]"
+                              style={{
+                                color: previewTheme.colors.primary,
+                                fontFamily: previewTheme.typography.headingFontFamily,
+                                fontWeight: previewTheme.typography.headingWeight,
+                              }}
+                            >
                               {currentStep.name}
                             </h2>
-                            <p className="mt-3 text-[20px] text-[#396d7a]">
-                              We are asking these questions for the
+                            <p className="mt-3 text-[20px]" style={{ color: previewTheme.colors.textSecondary }}>
+                              {getStepHeadlineSubtext(currentStep.type)}
                             </p>
                           </div>
 
-                          <StepContent
-                            step={currentStep}
-                            variant="intro"
-                            onContinue={() => setStepIndex((i) => Math.min(orderedSteps.length, i + 1))}
-                          />
+                          <div ref={stepFieldsRef}>
+                            <StepContent
+                              step={currentStep}
+                              variant="intro"
+                              theme={previewTheme}
+                              onContinue={handleProceed}
+                            />
+                          </div>
 
                           <div className="flex items-center justify-between pt-2">
                             <Button
                               variant="outline"
                               onClick={() => setStepIndex((i) => Math.max(0, i - 1))}
                               disabled={stepIndex === 0}
-                              className="border-[#004555]/30 text-[#004555] hover:bg-[#e8f0f3]"
+                              className=""
+                              style={{
+                                borderColor: `${previewTheme.colors.primary}66`,
+                                color: previewTheme.colors.primary,
+                              }}
                             >
                               Previous
                             </Button>
                             <Button
-                              onClick={() => setStepIndex((i) => Math.min(orderedSteps.length, i + 1))}
-                              className="h-[56px] rounded-none bg-[#004555] px-10 text-white hover:bg-[#003a48]"
+                              onClick={handleProceed}
+                              className="h-[56px] rounded-none px-10 text-white"
+                              style={{ backgroundColor: previewTheme.colors.primary }}
                             >
                               {stepIndex === orderedSteps.length - 1 ? "Finish Review" : "Proceed"}
                             </Button>
@@ -568,6 +969,65 @@ function PreviewFlowPageInner() {
                         </div>
                       </section>
                     </div>
+                  </div>
+                ) : (
+                  <div
+                    className="-mx-6 -my-4 border-y"
+                    style={{
+                      borderColor: `${previewTheme.colors.accent}80`,
+                      backgroundColor: previewTheme.colors.background,
+                    }}
+                  >
+                    <TopStepProgress steps={orderedSteps} currentIndex={stepIndex} theme={previewTheme} />
+                    <section className="px-10 py-12" style={{ backgroundColor: previewTheme.colors.background }}>
+                      <div className="mx-auto w-full max-w-[1120px] space-y-8">
+                        <div>
+                          <h2
+                            className="text-[48px] leading-[1.05] tracking-[-0.02em]"
+                            style={{
+                              color: previewTheme.colors.primary,
+                              fontFamily: previewTheme.typography.headingFontFamily,
+                              fontWeight: previewTheme.typography.headingWeight,
+                            }}
+                          >
+                            {currentStep.name}
+                          </h2>
+                          <p className="mt-3 text-[20px]" style={{ color: previewTheme.colors.textSecondary }}>
+                            {getStepHeadlineSubtext(currentStep.type)}
+                          </p>
+                        </div>
+
+                        <div ref={stepFieldsRef}>
+                          <StepContent
+                            step={currentStep}
+                            variant="intro"
+                            theme={previewTheme}
+                            onContinue={handleProceed}
+                          />
+                        </div>
+
+                        <div className="flex items-center justify-end gap-3 pt-2">
+                          <Button
+                            variant="outline"
+                            onClick={() => setStepIndex((i) => Math.max(0, i - 1))}
+                            disabled={stepIndex === 0}
+                            style={{
+                              borderColor: `${previewTheme.colors.primary}66`,
+                              color: previewTheme.colors.primary,
+                            }}
+                          >
+                            Previous
+                          </Button>
+                          <Button
+                            onClick={handleProceed}
+                            className="h-[56px] rounded-none px-10 text-white"
+                            style={{ backgroundColor: previewTheme.colors.primary }}
+                          >
+                            {stepIndex === orderedSteps.length - 1 ? "Finish Review" : "Proceed"}
+                          </Button>
+                        </div>
+                      </div>
+                    </section>
                   </div>
                 )}
               </>

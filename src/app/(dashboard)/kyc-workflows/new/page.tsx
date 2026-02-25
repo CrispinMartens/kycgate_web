@@ -10,6 +10,8 @@ type WorkflowDraft = {
   description: string;
   type: string;
   applicantType: string;
+  themeId: string;
+  flowLayout: "split" | "steps_top";
   nodes: Node[];
   edges: Edge[];
 };
@@ -67,6 +69,8 @@ export default function NewWorkflowPage() {
         description: workflow.description,
         type: workflow.type,
         applicantType: workflow.applicantType,
+        themeId: workflow.themeId,
+        flowLayout: workflow.flowLayout,
         steps,
         status: "inactive",
       }),

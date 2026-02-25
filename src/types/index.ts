@@ -171,6 +171,7 @@ export interface ApplicationStep {
   type:
     | "introduction_page"
     | "personal_information"
+    | "contact_information"
     | "legal_residences"
     | "document_collection"
     | "identity_verification"
@@ -246,6 +247,8 @@ export interface KycWorkflow extends Timestamps {
   name: string;
   description: string;
   type: ApplicationType;
+  themeId?: string;
+  flowLayout?: "split" | "steps_top";
   status: Status;
   version: number;
   isDefault: boolean;

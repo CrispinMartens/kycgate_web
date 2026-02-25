@@ -19,10 +19,26 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const themeInitScript = `
+    (function () {
+      try {
+        var stored = localStorage.getItem("kycgate.theme");
+        var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        var theme = stored === "dark" || stored === "light" ? stored : (prefersDark ? "dark" : "light");
+        document.documentElement.classList.toggle("dark", theme === "dark");
+      } catch (_) {
+        document.documentElement.classList.remove("dark");
+      }
+    })();
+  `;
+
   return (
     <html lang="en">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body
-        className={`${ibmPlexSans.variable} antialiased`}
+        className={`${ibmPlexSans.variable} font-sans antialiased`}
         suppressHydrationWarning
       >
         <TooltipProvider>{children}</TooltipProvider>

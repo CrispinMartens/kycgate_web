@@ -30,6 +30,8 @@ export async function POST(request: NextRequest) {
       name: body.name,
       description: body.description ?? "",
       type: body.type,
+      themeId: body.themeId ?? "theme_05",
+      flowLayout: body.flowLayout ?? "split",
       status: body.status ?? "inactive",
       version: 1,
       isDefault: false,

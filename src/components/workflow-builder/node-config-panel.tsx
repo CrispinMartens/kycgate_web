@@ -6,8 +6,15 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Trash2, X } from "lucide-react";
-import type { StepNodeData } from "./node-types";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Check, DoorOpen, Trash2, X } from "lucide-react";
+import type { StepNodeData, VerificationOutcomeAction } from "./node-types";
 
 interface NodeConfigPanelProps {
   node: Node;
@@ -18,6 +25,12 @@ interface NodeConfigPanelProps {
 
 export function NodeConfigPanel({ node, onUpdate, onDelete, onClose }: NodeConfigPanelProps) {
   const data = node.data as unknown as StepNodeData;
+  const isVerificationStep = [
+    "biometric_check",
+    "address_verification",
+    "business_verification",
+    "ubo_verification",
+  ].includes(data.stepType);
 
   if (node.type === "startNode" || node.type === "endNode") {
     return (
@@ -97,6 +110,56 @@ export function NodeConfigPanel({ node, onUpdate, onDelete, onClose }: NodeConfi
           min={1}
         />
       </div>
+
+      {isVerificationStep && (
+        <div className="space-y-2 rounded-lg border p-3">
+          <div className="flex items-center gap-2">
+            <Check className="h-4 w-4 text-emerald-600" />
+            <DoorOpen className="h-4 w-4 text-slate-600" />
+            <Label className="text-xs">Verification Outcome Routing</Label>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-[11px] text-muted-foreground">If verification succeeds</Label>
+            <Select
+              value={data.verificationSuccessAction ?? "proceed"}
+              onValueChange={(value) =>
+                onUpdate(node.id, { verificationSuccessAction: value as VerificationOutcomeAction })
+              }
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="proceed">Proceed to next step</SelectItem>
+                <SelectItem value="request_documents">Request additional documents</SelectItem>
+                <SelectItem value="manual_review">Send to manual review</SelectItem>
+                <SelectItem value="reject">Reject application</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-[11px] text-muted-foreground">If verification fails</Label>
+            <Select
+              value={data.verificationFailureAction ?? "manual_review"}
+              onValueChange={(value) =>
+                onUpdate(node.id, { verificationFailureAction: value as VerificationOutcomeAction })
+              }
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="retry_verification">Retry verification</SelectItem>
+                <SelectItem value="request_documents">Request additional documents</SelectItem>
+                <SelectItem value="manual_review">Send to manual review</SelectItem>
+                <SelectItem value="reject">Reject application</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      )}
 
       <Separator />
 

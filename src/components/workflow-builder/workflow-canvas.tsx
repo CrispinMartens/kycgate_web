@@ -40,7 +40,21 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Save, ArrowLeft, List, Workflow, Plus, ChevronUp, ChevronDown, Trash2, Eye } from "lucide-react";
+import {
+  Save,
+  ArrowLeft,
+  List,
+  Workflow,
+  Plus,
+  ChevronUp,
+  ChevronDown,
+  Trash2,
+  Eye,
+  Columns2,
+  Rows3,
+} from "lucide-react";
+import { useFetch } from "@/hooks/use-fetch";
+import type { ThemeConfig } from "@/types";
 
 const defaultEdgeOptions: Partial<Edge> = {
   type: "smoothstep",
@@ -48,8 +62,23 @@ const defaultEdgeOptions: Partial<Edge> = {
   style: { strokeWidth: 2, stroke: "hsl(var(--muted-foreground))" },
   markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16, color: "hsl(var(--muted-foreground))" },
 };
+const END_VERTICAL_OFFSET = 420;
 
 const INTRO_NODE_ID = "step_intro";
+const verificationStepTypes = new Set([
+  "biometric_check",
+  "address_verification",
+  "business_verification",
+  "ubo_verification",
+]);
+
+const getVerificationDefaults = (stepType: string): Partial<StepNodeData> => {
+  if (!verificationStepTypes.has(stepType)) return {};
+  return {
+    verificationSuccessAction: "proceed",
+    verificationFailureAction: "manual_review",
+  };
+};
 
 const createIntroductionNode = (): Node => ({
   id: INTRO_NODE_ID,
@@ -103,6 +132,8 @@ interface WorkflowCanvasProps {
     description: string;
     type: string;
     applicantType: string;
+    themeId: string;
+    flowLayout: "split" | "steps_top";
     nodes: Node[];
     edges: Edge[];
   }) => void;
@@ -111,6 +142,8 @@ interface WorkflowCanvasProps {
     description: string;
     type: string;
     applicantType: string;
+    themeId: string;
+    flowLayout: "split" | "steps_top";
     nodes: Node[];
     edges: Edge[];
   }) => void;
@@ -127,12 +160,34 @@ function WorkflowCanvasInner({ onSave, onPreview, onBack }: WorkflowCanvasProps)
   const [workflowDescription, setWorkflowDescription] = useState("");
   const [workflowType, setWorkflowType] = useState("kyc");
   const [applicantType, setApplicantType] = useState("individual");
+  const [themeId, setThemeId] = useState("theme_05");
+  const [flowLayout, setFlowLayout] = useState<"split" | "steps_top">("split");
   const [listMode, setListMode] = useState(false);
   const [hasHydratedDraft, setHasHydratedDraft] = useState(false);
   const [deleteWarningOpen, setDeleteWarningOpen] = useState(false);
   const [pendingDeleteNodeId, setPendingDeleteNodeId] = useState<string | null>(null);
 
   const nodeIdCounter = useRef(0);
+  const lastAddedStepId = useRef<string | null>(null);
+  const { data: availableThemes } = useFetch<ThemeConfig[]>("/api/themes");
+
+  useEffect(() => {
+    if (!availableThemes || availableThemes.length === 0) return;
+    const hasTheme = availableThemes.some((theme) => theme.id === themeId);
+    if (hasTheme) return;
+    const inaBankTheme = availableThemes.find((theme) => theme.id === "theme_05");
+    setThemeId((inaBankTheme ?? availableThemes[0]).id);
+  }, [availableThemes, themeId]);
+  const getCanvasCenterX = useCallback(() => {
+    if (!reactFlowInstance) return 250;
+    const wrapperBounds = reactFlowWrapper.current?.getBoundingClientRect();
+    if (!wrapperBounds) return 250;
+    const center = reactFlowInstance.screenToFlowPosition({
+      x: wrapperBounds.left + wrapperBounds.width / 2,
+      y: wrapperBounds.top + wrapperBounds.height / 2,
+    });
+    return center.x;
+  }, [reactFlowInstance]);
 
   const onConnect: OnConnect = useCallback(
     (params: Connection) => setEdges((eds) => addEdge({ ...params, ...defaultEdgeOptions }, eds)),
@@ -144,6 +199,19 @@ function WorkflowCanvasInner({ onSave, onPreview, onBack }: WorkflowCanvasProps)
     event.dataTransfer.dropEffect = "move";
   }, []);
 
+  useEffect(() => {
+    if (!reactFlowInstance) return;
+    const centerX = getCanvasCenterX();
+    setNodes((nds) =>
+      nds.map((n) => {
+        if (n.id === "start" || n.id === INTRO_NODE_ID || n.id === "end") {
+          return { ...n, position: { ...n.position, x: centerX } };
+        }
+        return n;
+      }),
+    );
+  }, [getCanvasCenterX, reactFlowInstance, setNodes]);
+
   const onDrop = useCallback(
     (event: React.DragEvent) => {
       event.preventDefault();
@@ -154,46 +222,128 @@ function WorkflowCanvasInner({ onSave, onPreview, onBack }: WorkflowCanvasProps)
       if (!itemJson) return;
 
       const item: PaletteItem = JSON.parse(itemJson);
-      if (!reactFlowInstance) {
-        setNodes((nds) => {
-          nodeIdCounter.current += 1;
-          const stepCountFallback = nds.filter((n) => n.type === "stepNode").length;
-          const fallbackNode: Node = {
-            id: `step_${nodeIdCounter.current}_${Date.now()}`,
-            type: "stepNode",
-            position: { x: 250, y: 160 + stepCountFallback * 140 },
-            data: {
-              label: item.label,
-              stepType: item.stepType,
-              required: true,
-              description: item.description,
-            } satisfies StepNodeData,
-          };
-          return [...nds, fallbackNode];
+      const connectFlowWithNewNode = (newNode: Node) => {
+        const stepNodes = [...nodes.filter((n) => n.type === "stepNode"), newNode];
+        const byId = new Map(stepNodes.map((n) => [n.id, n]));
+        const edgeMap = new Map(edges.map((e) => [e.source, e.target]));
+
+        const ordered: Node[] = [];
+        let current = "start";
+        const visited = new Set<string>();
+        while (current && !visited.has(current)) {
+          visited.add(current);
+          const nextId = edgeMap.get(current);
+          if (!nextId) break;
+          if (nextId !== "end") {
+            const node = byId.get(nextId);
+            if (node) ordered.push(node);
+          }
+          current = nextId;
+          if (nextId === "end") break;
+        }
+
+        const usedIds = new Set(ordered.map((n) => n.id));
+        const unlinked = stepNodes
+          .filter((n) => !usedIds.has(n.id))
+          .sort((a, b) => a.position.y - b.position.y);
+        const orderedNodes = [...ordered, ...unlinked];
+
+        const centerX = getCanvasCenterX();
+        setNodes((prev) => {
+          const nonSteps = prev
+            .filter((n) => n.type !== "stepNode")
+            .map((n) =>
+              n.id === "start"
+                ? { ...n, position: { ...n.position, x: centerX } }
+                : n.id === "end"
+                  ? {
+                      ...n,
+                      position: {
+                        ...n.position,
+                        x: centerX,
+                        y:
+                          (orderedNodes.length > 0
+                            ? 160 + (orderedNodes.length - 1) * 140
+                            : 180) + END_VERTICAL_OFFSET,
+                      },
+                    }
+                  : n,
+            );
+          const updatedSteps = orderedNodes.map((node, index) => ({
+            ...node,
+            position: { x: centerX, y: 160 + index * 140 },
+          }));
+          return [...nonSteps, ...updatedSteps];
         });
+
+        const sequence = ["start", ...orderedNodes.map((n) => n.id), "end"];
+        const nextEdges: Edge[] = [];
+        for (let i = 0; i < sequence.length - 1; i += 1) {
+          nextEdges.push({
+            id: `e_${sequence[i]}_${sequence[i + 1]}`,
+            source: sequence[i],
+            target: sequence[i + 1],
+            ...defaultEdgeOptions,
+          } as Edge);
+        }
+        setEdges(nextEdges);
+      };
+
+      if (!reactFlowInstance) {
+        nodeIdCounter.current += 1;
+        const centerXFallback = getCanvasCenterX();
+        const lastAddedNode = lastAddedStepId.current
+          ? nodes.find((n) => n.id === lastAddedStepId.current && n.type === "stepNode")
+          : undefined;
+        const maxStepY = nodes
+          .filter((n) => n.type === "stepNode")
+          .reduce((max, n) => Math.max(max, n.position.y), 180);
+        const nextY = lastAddedNode ? lastAddedNode.position.y + 140 : maxStepY + 140;
+        const newId = `step_${nodeIdCounter.current}_${Date.now()}`;
+        const fallbackNode: Node = {
+          id: newId,
+          type: "stepNode",
+          position: { x: centerXFallback, y: nextY },
+          data: {
+            label: item.label,
+            stepType: item.stepType,
+            required: true,
+            description: item.description,
+            ...getVerificationDefaults(item.stepType),
+          } satisfies StepNodeData,
+        };
+        connectFlowWithNewNode(fallbackNode);
+        lastAddedStepId.current = newId;
         return;
       }
-      const position = reactFlowInstance.screenToFlowPosition({
-        x: event.clientX,
-        y: event.clientY,
-      });
+      const centerX = getCanvasCenterX();
+      const lastAddedNode = lastAddedStepId.current
+        ? nodes.find((n) => n.id === lastAddedStepId.current && n.type === "stepNode")
+        : undefined;
+      const maxStepY = nodes
+        .filter((n) => n.type === "stepNode")
+        .reduce((max, n) => Math.max(max, n.position.y), 180);
+      const nextY = lastAddedNode ? lastAddedNode.position.y + 140 : maxStepY + 140;
 
       nodeIdCounter.current += 1;
+      const newId = `step_${nodeIdCounter.current}_${Date.now()}`;
       const newNode: Node = {
-        id: `step_${nodeIdCounter.current}_${Date.now()}`,
+        id: newId,
         type: "stepNode",
-        position,
+        position: { x: centerX, y: nextY },
         data: {
           label: item.label,
           stepType: item.stepType,
           required: true,
           description: item.description,
+          ...getVerificationDefaults(item.stepType),
         } satisfies StepNodeData,
       };
 
-      setNodes((nds) => [...nds, newNode]);
+      connectFlowWithNewNode(newNode);
+      lastAddedStepId.current = newId;
     },
-    [reactFlowInstance, setNodes],
+    [edges, getCanvasCenterX, nodes, reactFlowInstance, setEdges, setNodes],
   );
 
   const onDragStart = useCallback((event: React.DragEvent, item: PaletteItem) => {
@@ -289,11 +439,30 @@ function WorkflowCanvasInner({ onSave, onPreview, onBack }: WorkflowCanvasProps)
 
   const syncSequentialFlow = useCallback(
     (orderedNodes: Node[]) => {
+      const centerX = getCanvasCenterX();
       setNodes((prev) => {
-        const nonSteps = prev.filter((n) => n.type !== "stepNode");
+        const nonSteps = prev
+          .filter((n) => n.type !== "stepNode")
+          .map((n) =>
+            n.id === "start"
+              ? { ...n, position: { ...n.position, x: centerX } }
+              : n.id === "end"
+                ? {
+                    ...n,
+                    position: {
+                      ...n.position,
+                      x: centerX,
+                      y:
+                        (orderedNodes.length > 0
+                          ? 160 + (orderedNodes.length - 1) * 140
+                          : 180) + END_VERTICAL_OFFSET,
+                    },
+                  }
+              : n,
+          );
         const updatedSteps = orderedNodes.map((node, index) => ({
           ...node,
-          position: { x: 250, y: 160 + index * 140 },
+          position: { x: centerX, y: 160 + index * 140 },
         }));
         return [...nonSteps, ...updatedSteps];
       });
@@ -310,7 +479,7 @@ function WorkflowCanvasInner({ onSave, onPreview, onBack }: WorkflowCanvasProps)
       }
       setEdges(nextEdges);
     },
-    [setNodes, setEdges],
+    [getCanvasCenterX, setNodes, setEdges],
   );
 
   const addStepFromPalette = useCallback(
@@ -323,22 +492,32 @@ function WorkflowCanvasInner({ onSave, onPreview, onBack }: WorkflowCanvasProps)
       if (item.stepType === "introduction_page" && hasIntroduction) return;
 
       nodeIdCounter.current += 1;
+      const lastAddedNode = lastAddedStepId.current
+        ? nodes.find((n) => n.id === lastAddedStepId.current && n.type === "stepNode")
+        : undefined;
+      const maxStepY = nodes
+        .filter((n) => n.type === "stepNode")
+        .reduce((max, n) => Math.max(max, n.position.y), 180);
+      const nextY = lastAddedNode ? lastAddedNode.position.y + 140 : maxStepY + 140;
+      const newId = `step_${nodeIdCounter.current}_${Date.now()}`;
       const newNode: Node = {
-        id: `step_${nodeIdCounter.current}_${Date.now()}`,
+        id: newId,
         type: "stepNode",
-        position: { x: 250, y: 160 + stepCount * 140 },
+        position: { x: getCanvasCenterX(), y: nextY },
         data: {
           label: item.label,
           stepType: item.stepType,
           required: true,
           description: item.description,
+          ...getVerificationDefaults(item.stepType),
         } satisfies StepNodeData,
       };
+      lastAddedStepId.current = newId;
 
       const ordered = getOrderedStepNodes();
       syncSequentialFlow([...ordered, newNode]);
     },
-    [nodes, getOrderedStepNodes, stepCount, syncSequentialFlow],
+    [getCanvasCenterX, nodes, getOrderedStepNodes, syncSequentialFlow],
   );
 
   const moveStep = useCallback(
@@ -363,6 +542,8 @@ function WorkflowCanvasInner({ onSave, onPreview, onBack }: WorkflowCanvasProps)
       description: workflowDescription,
       type: workflowType,
       applicantType,
+      themeId,
+      flowLayout,
       nodes,
       edges,
     });
@@ -374,6 +555,8 @@ function WorkflowCanvasInner({ onSave, onPreview, onBack }: WorkflowCanvasProps)
       description: workflowDescription,
       type: workflowType,
       applicantType,
+      themeId,
+      flowLayout,
       nodes,
       edges,
     });
@@ -395,6 +578,15 @@ function WorkflowCanvasInner({ onSave, onPreview, onBack }: WorkflowCanvasProps)
 
   // Hydrate builder state when returning from preview or refresh.
   useEffect(() => {
+    const shouldResumeDraft = sessionStorage.getItem("kycgate.resumeDraft") === "1";
+    sessionStorage.removeItem("kycgate.resumeDraft");
+
+    if (!shouldResumeDraft) {
+      sessionStorage.removeItem(WORKFLOW_DRAFT_KEY);
+      setHasHydratedDraft(true);
+      return;
+    }
+
     const raw = sessionStorage.getItem(WORKFLOW_DRAFT_KEY);
     if (!raw) {
       setHasHydratedDraft(true);
@@ -406,6 +598,8 @@ function WorkflowCanvasInner({ onSave, onPreview, onBack }: WorkflowCanvasProps)
         description?: string;
         type?: string;
         applicantType?: string;
+        themeId?: string;
+        flowLayout?: "split" | "steps_top";
         nodes?: Node[];
         edges?: Edge[];
       };
@@ -413,6 +607,8 @@ function WorkflowCanvasInner({ onSave, onPreview, onBack }: WorkflowCanvasProps)
       if (draft.description) setWorkflowDescription(draft.description);
       if (draft.type) setWorkflowType(draft.type);
       if (draft.applicantType) setApplicantType(draft.applicantType);
+      if (draft.themeId) setThemeId(draft.themeId);
+      if (draft.flowLayout) setFlowLayout(draft.flowLayout);
       if (Array.isArray(draft.nodes) && draft.nodes.length > 0) setNodes(draft.nodes);
       if (Array.isArray(draft.edges)) setEdges(draft.edges);
 
@@ -451,11 +647,13 @@ function WorkflowCanvasInner({ onSave, onPreview, onBack }: WorkflowCanvasProps)
       description: workflowDescription,
       type: workflowType,
       applicantType,
+      themeId,
+      flowLayout,
       nodes,
       edges,
     };
     sessionStorage.setItem(WORKFLOW_DRAFT_KEY, JSON.stringify(draft));
-  }, [hasHydratedDraft, workflowName, workflowDescription, workflowType, applicantType, nodes, edges]);
+  }, [hasHydratedDraft, workflowName, workflowDescription, workflowType, applicantType, themeId, flowLayout, nodes, edges]);
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] overflow-hidden -m-6">
@@ -521,6 +719,55 @@ function WorkflowCanvasInner({ onSave, onPreview, onBack }: WorkflowCanvasProps)
                 <option value="entity">Entity</option>
                 <option value="both">Both</option>
               </select>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Theme</Label>
+            <select
+              value={themeId}
+              onChange={(e) => setThemeId(e.target.value)}
+              disabled={!availableThemes || availableThemes.length === 0}
+              className="flex h-9 w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
+            >
+              {(!availableThemes || availableThemes.length === 0) && (
+                <option value={themeId}>Loading themes...</option>
+              )}
+              {(availableThemes ?? []).map((theme) => (
+                <option key={theme.id} value={theme.id}>
+                  {theme.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Layout Design</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setFlowLayout("split")}
+                className={[
+                  "flex h-16 flex-col items-center justify-center gap-1 rounded-md border px-2 text-xs font-medium transition-colors",
+                  flowLayout === "split"
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-input bg-background text-foreground hover:bg-muted",
+                ].join(" ")}
+              >
+                <Columns2 className="h-4 w-4" />
+                <span>Split Layout</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFlowLayout("steps_top")}
+                className={[
+                  "flex h-16 flex-col items-center justify-center gap-1 rounded-md border px-2 text-xs font-medium transition-colors",
+                  flowLayout === "steps_top"
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-input bg-background text-foreground hover:bg-muted",
+                ].join(" ")}
+              >
+                <Rows3 className="h-4 w-4" />
+                <span>Steps on Top</span>
+              </button>
             </div>
           </div>
         </div>

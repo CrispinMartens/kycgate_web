@@ -124,3 +124,33 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* KYC flow preview typography */
+.preview-kyc-flow {
+  font-family: "Proxima Nova", "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+}
+
+.preview-kyc-flow :is(h1, h2, h3, h4, h5, h6) {
+  font-family: "GT Alpina", "Times New Roman", Georgia, serif;
+}
+
+/* Keep all dropdown typography in Proxima Nova */
+.preview-kyc-flow :is(
+  button,
+  [data-slot="button"],
+  [data-slot="select-trigger"],
+  [data-slot="select-content"],
+  [data-slot="select-item"],
+  [data-slot="select-value"],
+  [data-slot="popover-content"],
+  .preview-kyc-dropdown-trigger,
+  .preview-kyc-datepicker-trigger,
+  .preview-kyc-datepicker-content,
+  .preview-kyc-datepicker-content *
+) {
+  font-family: "Proxima Nova", "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+}
+
+.preview-kyc-flow .preview-kyc-platform-button {
+  font-family: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+}

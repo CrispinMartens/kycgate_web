@@ -3,9 +3,9 @@
 import {
   House,
   FileText,
-  ScanFace,
   MapPin,
   UserRound,
+  PhoneCall,
   Globe,
   ShieldAlert,
   UserCheck,
@@ -16,6 +16,7 @@ import {
   Building2,
   Users,
   GripVertical,
+  Cog,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -30,9 +31,9 @@ export interface PaletteItem {
 export const paletteItems: PaletteItem[] = [
   { stepType: "introduction_page", label: "Introduction Page", description: "Welcome screen and consent start", icon: House, category: "collection" },
   { stepType: "personal_information", label: "Personal Information", description: "Capture core personal identity details", icon: UserRound, category: "collection" },
+  { stepType: "contact_information", label: "Contact Information", description: "Capture phone, email, and preferred contact method", icon: PhoneCall, category: "collection" },
   { stepType: "legal_residences", label: "Legal Residences", description: "Collect tax and legal residency information", icon: Globe, category: "collection" },
   { stepType: "document_collection", label: "Document Collection", description: "Collect identity & proof documents", icon: FileText, category: "collection" },
-  { stepType: "identity_verification", label: "Identity Verification", description: "Verify identity against documents", icon: ScanFace, category: "verification" },
   { stepType: "biometric_check", label: "Biometric Check", description: "Liveness & face match verification", icon: Fingerprint, category: "verification" },
   { stepType: "address_verification", label: "Address Verification", description: "Verify proof of address", icon: MapPin, category: "verification" },
   { stepType: "business_verification", label: "Business Verification", description: "Verify against company registries", icon: Building2, category: "verification" },
@@ -60,6 +61,7 @@ interface StepPaletteProps {
 
 export function StepPalette({ onDragStart, onItemClick }: StepPaletteProps) {
   const grouped = categoryOrder.map((cat) => ({
+    key: cat,
     label: categoryLabels[cat],
     items: paletteItems.filter((i) => i.category === cat),
   }));
@@ -67,7 +69,10 @@ export function StepPalette({ onDragStart, onItemClick }: StepPaletteProps) {
   return (
     <div className="space-y-4">
       {grouped.map((group) => (
-        <div key={group.label}>
+        <div
+          key={group.label}
+          className={cn(group.key === "screening" && "relative pb-6")}
+        >
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
             {group.label}
           </p>
@@ -94,6 +99,13 @@ export function StepPalette({ onDragStart, onItemClick }: StepPaletteProps) {
               </div>
             ))}
           </div>
+
+          {group.key === "screening" ? (
+            <div className="pointer-events-none absolute bottom-0 right-0 flex items-center gap-1.5 text-muted-foreground/50">
+              <Cog className="h-4 w-4 animate-spin [animation-duration:8s]" />
+              <Cog className="h-3.5 w-3.5 animate-spin [animation-direction:reverse] [animation-duration:5s]" />
+            </div>
+          ) : null}
         </div>
       ))}
     </div>

@@ -17,6 +17,9 @@ import {
   Palette,
   Code2,
   Shield,
+  ChevronsUpDown,
+  UserCog,
+  ShieldCheck,
 } from "lucide-react";
 import {
   Sidebar,
@@ -31,6 +34,12 @@ import {
   SidebarFooter,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const navGroups = [
   {
@@ -80,6 +89,9 @@ const navGroups = [
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const activeRoleLabel = pathname.startsWith("/compliance-officer")
+    ? "Compliance Officer"
+    : "Admin User";
 
   return (
     <Sidebar collapsible="icon">
@@ -132,12 +144,31 @@ export function AppSidebar() {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="sm">
-              <div className="bg-muted flex aspect-square size-6 items-center justify-center rounded-full text-xs font-medium">
-                A
-              </div>
-              <span className="text-sm">Admin User</span>
-            </SidebarMenuButton>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <SidebarMenuButton size="sm">
+                  <div className="bg-muted flex aspect-square size-6 items-center justify-center rounded-full text-xs font-medium">
+                    {activeRoleLabel === "Compliance Officer" ? "C" : "A"}
+                  </div>
+                  <span className="text-sm">{activeRoleLabel}</span>
+                  <ChevronsUpDown className="ml-auto h-3.5 w-3.5 text-muted-foreground" />
+                </SidebarMenuButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem asChild>
+                  <Link href="/" className="flex items-center gap-2">
+                    <UserCog className="h-4 w-4" />
+                    <span>Admin User</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/compliance-officer" className="flex items-center gap-2">
+                    <ShieldCheck className="h-4 w-4" />
+                    <span>Compliance Officer</span>
+                  </Link>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

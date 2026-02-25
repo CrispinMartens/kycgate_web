@@ -5,9 +5,9 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import {
   House,
   FileText,
-  ScanFace,
   MapPin,
   UserRound,
+  PhoneCall,
   Globe,
   ShieldAlert,
   UserCheck,
@@ -19,8 +19,18 @@ import {
   Users,
   Play,
   CheckCircle2,
+  Check,
+  DoorOpen,
+  Cog,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+export type VerificationOutcomeAction =
+  | "proceed"
+  | "request_documents"
+  | "manual_review"
+  | "retry_verification"
+  | "reject";
 
 export interface StepNodeData {
   label: string;
@@ -28,14 +38,29 @@ export interface StepNodeData {
   required: boolean;
   timeoutHours?: number;
   description?: string;
+  verificationSuccessAction?: VerificationOutcomeAction;
+  verificationFailureAction?: VerificationOutcomeAction;
 }
+
+const verificationStepTypes = new Set([
+  "biometric_check",
+  "address_verification",
+  "business_verification",
+  "ubo_verification",
+]);
+
+const screeningStepTypes = new Set([
+  "sanctions_screening",
+  "pep_check",
+  "adverse_media",
+]);
 
 const stepIcons: Record<string, React.ElementType> = {
   introduction_page: House,
   personal_information: UserRound,
+  contact_information: PhoneCall,
   legal_residences: Globe,
   document_collection: FileText,
-  identity_verification: ScanFace,
   address_verification: MapPin,
   sanctions_screening: ShieldAlert,
   pep_check: UserCheck,
@@ -50,13 +75,13 @@ const stepIcons: Record<string, React.ElementType> = {
 const stepColors: Record<string, { bg: string; border: string; icon: string }> = {
   introduction_page: { bg: "bg-slate-50 dark:bg-slate-950/30", border: "border-slate-300 dark:border-slate-700", icon: "text-slate-700 dark:text-slate-300" },
   personal_information: { bg: "bg-sky-50 dark:bg-sky-950/30", border: "border-sky-200 dark:border-sky-800", icon: "text-sky-600" },
+  contact_information: { bg: "bg-blue-50 dark:bg-blue-950/30", border: "border-blue-200 dark:border-blue-800", icon: "text-blue-600" },
   legal_residences: { bg: "bg-cyan-50 dark:bg-cyan-950/30", border: "border-cyan-200 dark:border-cyan-800", icon: "text-cyan-600" },
   document_collection: { bg: "bg-blue-50 dark:bg-blue-950/30", border: "border-blue-200 dark:border-blue-800", icon: "text-blue-600" },
-  identity_verification: { bg: "bg-violet-50 dark:bg-violet-950/30", border: "border-violet-200 dark:border-violet-800", icon: "text-violet-600" },
   address_verification: { bg: "bg-cyan-50 dark:bg-cyan-950/30", border: "border-cyan-200 dark:border-cyan-800", icon: "text-cyan-600" },
   sanctions_screening: { bg: "bg-red-50 dark:bg-red-950/30", border: "border-red-200 dark:border-red-800", icon: "text-red-600" },
-  pep_check: { bg: "bg-purple-50 dark:bg-purple-950/30", border: "border-purple-200 dark:border-purple-800", icon: "text-purple-600" },
-  adverse_media: { bg: "bg-amber-50 dark:bg-amber-950/30", border: "border-amber-200 dark:border-amber-800", icon: "text-amber-600" },
+  pep_check: { bg: "bg-red-50 dark:bg-red-950/30", border: "border-red-200 dark:border-red-800", icon: "text-red-600" },
+  adverse_media: { bg: "bg-red-50 dark:bg-red-950/30", border: "border-red-200 dark:border-red-800", icon: "text-red-600" },
   risk_assessment: { bg: "bg-orange-50 dark:bg-orange-950/30", border: "border-orange-200 dark:border-orange-800", icon: "text-orange-600" },
   manual_review: { bg: "bg-slate-50 dark:bg-slate-950/30", border: "border-slate-300 dark:border-slate-700", icon: "text-slate-600" },
   biometric_check: { bg: "bg-emerald-50 dark:bg-emerald-950/30", border: "border-emerald-200 dark:border-emerald-800", icon: "text-emerald-600" },
@@ -72,7 +97,7 @@ export const StepNode = memo(function StepNode({ data, selected }: NodeProps) {
   return (
     <div
       className={cn(
-        "rounded-xl border-2 shadow-sm transition-all w-[240px]",
+        "relative rounded-xl border-2 shadow-sm transition-all w-[240px]",
         colors.bg,
         colors.border,
         selected && "ring-2 ring-primary ring-offset-2 shadow-md",
@@ -103,6 +128,24 @@ export const StepNode = memo(function StepNode({ data, selected }: NodeProps) {
             <span className="text-muted-foreground">{nodeData.timeoutHours}h timeout</span>
           )}
         </div>
+        {verificationStepTypes.has(nodeData.stepType) && (
+          <div className="mt-2 flex items-center gap-1.5 text-[10px]">
+            <span className="inline-flex items-center gap-1 rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-emerald-700">
+              <Check className="h-3 w-3" />
+              Pass/Fail
+            </span>
+            <span className="inline-flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-slate-700">
+              <DoorOpen className="h-3 w-3" />
+              Route
+            </span>
+          </div>
+        )}
+        {screeningStepTypes.has(nodeData.stepType) && (
+          <div className="pointer-events-none absolute bottom-2 right-2 flex items-center gap-0 text-muted-foreground/55">
+            <Cog className="h-3.5 w-3.5 animate-spin [animation-duration:8s]" />
+            <Cog className="h-3 w-3 animate-spin [animation-direction:reverse] [animation-duration:5s]" />
+          </div>
+        )}
       </div>
       <Handle
         type="source"
